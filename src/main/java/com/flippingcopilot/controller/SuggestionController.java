@@ -22,10 +22,7 @@ import net.runelite.client.chat.ChatMessageBuilder;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.UnsupportedAudioFileException;
 import javax.swing.*;
-import java.io.IOException;
 import java.util.function.Consumer;
 
 
@@ -261,7 +258,7 @@ public class SuggestionController {
     private void playDumpAlertSound() {
         try {
             audioPlayer.play(SuggestionController.class, DUMP_ALERT_SOUND, 0);
-        } catch (IOException | UnsupportedAudioFileException | LineUnavailableException e) {
+        } catch (Exception e) {
             log.warn("failed to play dump alert sound", e);
         }
     }
