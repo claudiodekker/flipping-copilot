@@ -150,15 +150,16 @@ public class OfferFillChecker {
                 continue;
             }
             notified.put(ro.fingerprint(), ro.slotKey());
-            notifySink.accept(buildMessage(ro.offer, itemName.apply(ro.offer.getItemId())));
+            notifySink.accept(buildMessage(ro.offer, itemName.apply(ro.offer.getItemId()), ro.accountName));
         }
     }
 
-    private static String buildMessage(SavedOffer offer, String itemName) {
-        return String.format("Flipping Copilot: %d × %s likely %s @ %s",
+    private static String buildMessage(SavedOffer offer, String itemName, String accountName) {
+        return String.format("Flipping Copilot: %d × %s likely %s @ %s%s",
                 offer.getTotalQuantity() - offer.getQuantitySold(),
                 itemName,
                 offer.getOfferStatus() == OfferStatus.SELL ? "sold" : "bought",
-                UIUtilities.quantityToRSDecimalStack(offer.getPrice(), false));
+                UIUtilities.quantityToRSDecimalStack(offer.getPrice(), false),
+                accountName == null || accountName.isEmpty() ? "" : " (" + accountName + ")");
     }
 }

@@ -58,7 +58,7 @@ public class OfferFillCheckerTest {
         try (FileWriter w = new FileWriter(new File(tmp.getRoot(), "acc_" + hash + "_" + slot + ".json"))) {
             w.write("{\"itemId\":" + itemId + ",\"quantitySold\":0,\"totalQuantity\":2,\"price\":" + price + ",\"spent\":0,\"state\":\"SELLING\",\"copilotPriceUsed\":true,\"wasCopilotSuggestion\":true}");
         }
-        offerManager.stampSeen(hash, slot, 50_000L);
+        offerManager.stampSeen(hash, slot, 50_000L, "Zezima");
     }
 
     // holds each consumer instead of calling it, so a test controls when responses land
@@ -72,7 +72,7 @@ public class OfferFillCheckerTest {
     }
 
     private Long seen(long hash, int slot) {
-        return offerManager.loadSeen(hash).get(slot);
+        return offerManager.loadSeen(hash).slots.get(slot);
     }
 
     private static SavedOffer savedOffer(GrandExchangeOfferState state, long price) {
@@ -124,7 +124,7 @@ public class OfferFillCheckerTest {
         writeSellOffer(123L, 4, 100L);
         responses.put(FANG, latest(101L, 60_000L, 1L, 60_000L));
         checker.poll();
-        assertEquals("Flipping Copilot: 2 × Osmumten's fang likely sold @ 100", notifications.get(0));
+        assertEquals("Flipping Copilot: 2 × Osmumten's fang likely sold @ 100 (Zezima)", notifications.get(0));
 
         checker.poll();
         checker.poll();
@@ -169,7 +169,7 @@ public class OfferFillCheckerTest {
         assertEquals(1, notifications.size());
 
         writeSellOffer(123L, 4, 95L);
-        offerManager.stampSeen(123L, 4, 55_000L);
+        offerManager.stampSeen(123L, 4, 55_000L, "Zezima");
         responses.put(FANG, latest(96L, 61_000L, 1L, 61_000L));
         checker.poll();
         assertEquals("a repriced offer is a new offer", 2, notifications.size());
@@ -377,7 +377,7 @@ public class OfferFillCheckerTest {
         now = 105_000L;
         checker.onSessionEndShutdown();
         OfferManager fresh = new OfferManager(new Gson(), new DoesNothingExecutorService());
-        assertEquals(Long.valueOf(105_000L), fresh.loadSeen(123L).get(0));
+        assertEquals(Long.valueOf(105_000L), fresh.loadSeen(123L).slots.get(0));
     }
 
     @Test
@@ -388,6 +388,6 @@ public class OfferFillCheckerTest {
         now = 110_000L;
         checker.onSessionEndShutdown();
         OfferManager fresh = new OfferManager(new Gson(), new DoesNothingExecutorService());
-        assertEquals(Long.valueOf(105_000L), fresh.loadSeen(123L).get(0));
+        assertEquals(Long.valueOf(105_000L), fresh.loadSeen(123L).slots.get(0));
     }
 }

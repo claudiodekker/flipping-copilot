@@ -4,7 +4,6 @@ import com.flippingcopilot.controller.Persistance;
 import com.google.gson.Gson;
 import com.google.gson.JsonIOException;
 import com.google.gson.JsonSyntaxException;
-import com.google.gson.reflect.TypeToken;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -103,25 +102,32 @@ public class OfferManager {
     }
 
     private static final String SEEN_FILE_TEMPLATE = "acc_%d_seen.json";
-    private static final Type SEEN_MAP_TYPE = new TypeToken<Map<Integer, Long>>(){}.getType();
+
+    public static class SeenData {
+        public String name;
+        public Map<Integer, Long> slots = new HashMap<>();
+    }
 
     private final Object seenLock = new Object();
-    private final Map<Long, Map<Integer, Long>> seenCache = new HashMap<>();
+    private final Map<Long, SeenData> seenCache = new HashMap<>();
     private final Set<Long> seenDirty = new HashSet<>();
 
-    public void stampSeen(long accountHash, int slot, long epochSeconds) {
-        stampSlots(accountHash, epochSeconds, slot);
+    public void stampSeen(long accountHash, int slot, long epochSeconds, String name) {
+        stampSlots(accountHash, epochSeconds, name, slot);
     }
 
     public void stampSeenAll(long accountHash, long epochSeconds) {
-        stampSlots(accountHash, epochSeconds, 0, 1, 2, 3, 4, 5, 6, 7);
+        stampSlots(accountHash, epochSeconds, null, 0, 1, 2, 3, 4, 5, 6, 7);
     }
 
-    private void stampSlots(long accountHash, long epochSeconds, int... slots) {
+    private void stampSlots(long accountHash, long epochSeconds, String name, int... slots) {
         synchronized (seenLock) {
-            Map<Integer, Long> m = seededSeen(accountHash);
+            SeenData d = seededSeen(accountHash);
+            if (name != null && !name.isEmpty()) {
+                d.name = name;
+            }
             for (int slot : slots) {
-                m.merge(slot, epochSeconds, Math::max);
+                d.slots.merge(slot, epochSeconds, Math::max);
             }
 
             seenDirty.add(accountHash);
@@ -138,21 +144,24 @@ public class OfferManager {
         }
     }
 
-    public Map<Integer, Long> loadSeen(long accountHash) {
-        Map<Integer, Long> result = new HashMap<>(readSeenFromDisk(accountHash));
+    public SeenData loadSeen(long accountHash) {
+        SeenData result = readSeenFromDisk(accountHash);
 
         synchronized (seenLock) {
-            Map<Integer, Long> mem = seenCache.get(accountHash);
+            SeenData mem = seenCache.get(accountHash);
             if (mem != null) {
-                mem.forEach((slot, t) -> result.merge(slot, t, Math::max));
+                mem.slots.forEach((slot, t) -> result.slots.merge(slot, t, Math::max));
+                if (result.name == null || result.name.isEmpty()) {
+                    result.name = mem.name;
+                }
             }
         }
 
         return result;
     }
 
-    private Map<Integer, Long> seededSeen(long accountHash) {
-        return seenCache.computeIfAbsent(accountHash, (k) -> new HashMap<>(readSeenFromDisk(k)));
+    private SeenData seededSeen(long accountHash) {
+        return seenCache.computeIfAbsent(accountHash, this::readSeenFromDisk);
     }
 
     private void writeSeen(long accountHash) {
@@ -162,8 +171,8 @@ public class OfferManager {
     }
 
     private void writeSeenLocked(long accountHash) {
-        Map<Integer, Long> m = seenCache.get(accountHash);
-        if (m != null && Persistance.writeAtomically(seenFile(accountHash), gson.toJson(m, SEEN_MAP_TYPE))) {
+        SeenData d = seenCache.get(accountHash);
+        if (d != null && Persistance.writeAtomically(seenFile(accountHash), gson.toJson(d))) {
             seenDirty.remove(accountHash);
         }
     }
@@ -176,6 +185,7 @@ public class OfferManager {
         public final int slot;
         public final SavedOffer offer;
         public final long lastSeen;
+        public final String accountName;
 
         public static String slotKey(long accountHash, int slot) {
             return accountHash + ":" + slot;
@@ -202,7 +212,7 @@ public class OfferManager {
             return result;
         }
 
-        Map<Long, Map<Integer, Long>> seenByAccount = new HashMap<>();
+        Map<Long, SeenData> seenByAccount = new HashMap<>();
         for (File f : files) {
             Matcher m = OFFER_FILE_PATTERN.matcher(f.getName());
             if (!m.matches()) {
@@ -230,22 +240,28 @@ public class OfferManager {
             }
 
             // a torn sidecar reads as an empty map, so every slot falls out on the null check below
-            Map<Integer, Long> seen = seenByAccount.computeIfAbsent(accountHash, this::loadSeen);
-            Long lastSeen = seen.get(slot);
+            SeenData seen = seenByAccount.computeIfAbsent(accountHash, this::loadSeen);
+            Long lastSeen = seen.slots.get(slot);
             if (lastSeen == null || lastSeen == 0) {
                 continue;
             }
 
-            result.resting.add(new RestingOffer(accountHash, slot, offer, lastSeen));
+            result.resting.add(new RestingOffer(accountHash, slot, offer, lastSeen, seen.name));
             result.resolvedSlotKeys.add(RestingOffer.slotKey(accountHash, slot));
         }
 
         return result;
     }
 
-    private Map<Integer, Long> readSeenFromDisk(long accountHash) {
-        Map<Integer, Long> m = readJsonFile(seenFile(accountHash), SEEN_MAP_TYPE);
-        return m != null ? m : new HashMap<>();
+    private SeenData readSeenFromDisk(long accountHash) {
+        SeenData d = readJsonFile(seenFile(accountHash), SeenData.class);
+        if (d == null) {
+            d = new SeenData();
+        }
+        if (d.slots == null) {
+            d.slots = new HashMap<>();
+        }
+        return d;
     }
 
     private static File seenFile(long accountHash) {
