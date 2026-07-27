@@ -20,11 +20,13 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.events.*;
 import net.runelite.api.widgets.Widget;
+import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -37,9 +39,11 @@ import net.runelite.client.util.ImageUtil;
 import javax.inject.Inject;
 import javax.swing.*;
 import java.awt.image.BufferedImage;
+import java.time.Instant;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -133,6 +137,15 @@ public class FlippingCopilotPlugin extends Plugin {
 	private PortfolioBankTagController portfolioBankTagController;
 	@Inject
 	private PlayerLocationController playerLocationController;
+	@Inject
+	private ApiRequestHandler apiRequestHandler;
+	@Inject
+	private Notifier notifier;
+	@Inject
+	private ItemController itemController;
+
+	private OfferFillChecker offerFillChecker;
+	private ScheduledFuture<?> offerFillCheckerFuture;
 
 	// We use our own ThreadPool since the default ScheduledExecutorService only has a single thread and we don't want to block it
 	@Provides
@@ -202,6 +215,32 @@ public class FlippingCopilotPlugin extends Plugin {
 				}
 			})
 		, 2000, 1000, TimeUnit.MILLISECONDS);
+
+		offerFillChecker = new OfferFillChecker(
+				offerManager,
+				config::offlineFlipAlerts,
+				() -> Instant.now().getEpochSecond(),
+				clientThread::invoke,
+				apiRequestHandler::asyncGetWikiLatestPrice,
+				itemController::getItemName,
+				this::sendFlipAlert);
+
+		clientThread.invokeLater(() -> {
+			if (client.getGameState() == GameState.LOGGED_IN) {
+				offerFillChecker.onOsrsLoggedIn(client.getAccountHash(), !osrsLoginManager.isUnsupportedWorldType());
+			}
+		});
+
+		offerFillCheckerFuture = executorService.scheduleAtFixedRate(offerFillChecker::poll, 120, 120, TimeUnit.SECONDS);
+	}
+
+	private void sendFlipAlert(String msg) {
+		if (config.enableTrayNotifications()) {
+			executorService.execute(() -> notifier.notify(msg));
+		}
+		if (config.enableChatNotifications() && client.getGameState() == GameState.LOGGED_IN) {
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", new ChatMessageBuilder().append(config.chatTextColor(), msg).build(), "");
+		}
 	}
 
 	@Override
@@ -210,6 +249,12 @@ public class FlippingCopilotPlugin extends Plugin {
 		overlayManager.remove(inventoryPortfolioBadgeOverlay);
 		overlayManager.remove(portfolioBankTabBadgeOverlay);
 		portfolioBankTagController.shutDown();
+		if (offerFillCheckerFuture != null) {
+			offerFillCheckerFuture.cancel(true);
+		}
+		if (offerFillChecker != null) {
+			offerFillChecker.onSessionEndShutdown();
+		}
 		offerManager.saveAll();
 		highlightController.deactivateAndRemoveAll();
 		clientThread.invokeLater(() -> slotProfitColorizer.resetAllSlots());
@@ -330,6 +375,7 @@ public class FlippingCopilotPlugin extends Plugin {
 				statsPanel.refresh(true, copilotLoginRS.get().isLoggedIn() && osrsLoginManager.isValidLoginState());
 				osrsLoginRS.set(osrsLoginRS.get().nextState(client));
 				mainPanel.refresh();
+				offerFillChecker.onOsrsLoginScreen();
 				break;
 			case LOGGING_IN:
 			case HOPPING:
@@ -338,6 +384,7 @@ public class FlippingCopilotPlugin extends Plugin {
 				osrsLoginRS.set(osrsLoginRS.get().nextState(client));
 				break;
 			case LOGGED_IN:
+				offerFillChecker.onOsrsLoggedIn(client.getAccountHash(), !osrsLoginManager.isUnsupportedWorldType());
 				// we want to update the flips panel on login but unfortunately the display name
 				// is not available immediately so schedule what we need to do here for in the future
 				// todo: move to just using the accountHash which is available immediately to simply things
@@ -375,6 +422,7 @@ public class FlippingCopilotPlugin extends Plugin {
 	@Subscribe
 	public void onClientShutdown(ClientShutdown clientShutdownEvent) {
 		log.debug("client shutdown event received");
+		offerFillChecker.onSessionEndShutdown();
 		offerManager.saveAll();
 		if(copilotLoginRS.get().isLoggedIn()) {
 			String displayName = osrsLoginManager.getLastDisplayName();
