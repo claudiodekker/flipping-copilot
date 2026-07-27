@@ -2,17 +2,29 @@ package com.flippingcopilot.ui.graph;
 
 import com.flippingcopilot.ui.graph.model.Bounds;
 import com.flippingcopilot.ui.graph.model.Config;
+import com.flippingcopilot.ui.graph.model.Constants;
 import com.flippingcopilot.util.MathUtil;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.awt.*;
 import java.awt.geom.RoundRectangle2D;
+import java.util.Arrays;
+import java.util.List;
 
 @Slf4j
 @Getter
 public class ZoomHandler {
+
+    @RequiredArgsConstructor
+    public static class ZoomPreset {
+        public final String label;
+        public final int spanSeconds;
+        public final Rectangle buttonRect = new Rectangle();
+        public Bounds bounds;
+    }
 
     private static final int MIN_TIME_DELTA = 60*60;
     private static final long MIN_PRICE_DELTA = 5;
@@ -26,13 +38,15 @@ public class ZoomHandler {
     private final Rectangle maxButtonRect = new Rectangle();
     private final Rectangle zoomInButtonRect = new Rectangle();
     private final Rectangle zoomOutButtonRect = new Rectangle();
-    private final Rectangle weekButtonRect = new Rectangle();
-    private final Rectangle monthButtonRect = new Rectangle();
+
+    public final List<ZoomPreset> presets = Arrays.asList(
+            new ZoomPreset("Month", 30 * Constants.DAY_SECONDS),
+            new ZoomPreset("Week", 7 * Constants.DAY_SECONDS),
+            new ZoomPreset("Day", Constants.DAY_SECONDS),
+            new ZoomPreset("8h", 8 * Constants.HOUR_SECONDS));
 
     public Bounds maxViewBounds;
     public Bounds homeViewBounds;
-    public Bounds weekViewBounds;
-    public Bounds monthViewBounds;
 
     public void startSelection(Point point) {
         selectionStart = new Point(point);
@@ -113,12 +127,14 @@ public class ZoomHandler {
         copyBounds(bounds, maxViewBounds);
     }
 
-    public void applyWeekView(Bounds bounds) {
-        copyBounds(bounds, weekViewBounds);
-    }
-
-    public void applyMonthView(Bounds bounds) {
-        copyBounds(bounds, monthViewBounds);
+    public boolean applyPresetAt(Bounds bounds, Point point) {
+        for (ZoomPreset preset : presets) {
+            if (isOver(preset.buttonRect, point)) {
+                copyBounds(bounds, preset.bounds);
+                return true;
+            }
+        }
+        return false;
     }
 
     private void copyBounds(Bounds target, Bounds source) {
@@ -179,20 +195,14 @@ public class ZoomHandler {
         // Draw - symbol
         drawPlusMinusIcon(g2d, zoomOutButtonRect, false);
 
-        // Width for text buttons (Week and Month)
+        // Draw the preset buttons (wider than the others), right to left so the longest span ends up leftmost
         int textButtonWidth = size * 2;
-
-        // Draw Week button (wider than the others)
-        x -= textButtonWidth + Config.GRAPH_BUTTON_MARGIN;
-        drawButtonBackground(g2d, weekButtonRect, x, y, textButtonWidth, isOverWeekButton(p));
-        // Draw Week text
-        drawCenteredText(g2d, weekButtonRect, "Week");
-
-        // Draw Month button (wider than the others)
-        x -= textButtonWidth + Config.GRAPH_BUTTON_MARGIN;
-        drawButtonBackground(g2d, monthButtonRect, x, y, textButtonWidth, isOverMonthButton(p));
-        // Draw Month text
-        drawCenteredText(g2d, monthButtonRect, "Month");
+        for (int i = presets.size() - 1; i >= 0; i--) {
+            ZoomPreset preset = presets.get(i);
+            x -= textButtonWidth + Config.GRAPH_BUTTON_MARGIN;
+            drawButtonBackground(g2d, preset.buttonRect, x, y, textButtonWidth, isOver(preset.buttonRect, p));
+            drawCenteredText(g2d, preset.buttonRect, preset.label);
+        }
     }
 
     private void drawButtonBackground(Graphics2D g2d, Rectangle rect, int x, int y, int width, boolean hovered) {
@@ -288,13 +298,5 @@ public class ZoomHandler {
 
     public boolean isOverZoomOutButton(Point point) {
         return isOver(zoomOutButtonRect, point);
-    }
-
-    public boolean isOverWeekButton(Point point) {
-        return isOver(weekButtonRect, point);
-    }
-
-    public boolean isOverMonthButton(Point point) {
-        return isOver(monthButtonRect, point);
     }
 }

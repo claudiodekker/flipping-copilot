@@ -105,15 +105,10 @@ public class DataManager {
         return b;
     }
 
-    public Bounds calculateWeekBounds() {
-        Bounds b = calculateBounds((p) -> p.time > maxBounds.xMax - 7 * Constants.DAY_SECONDS);
-        b.xMin= ((b.xMin) / Constants.HOUR_SECONDS) * Constants.HOUR_SECONDS;
-        b.xMax = ((b.xMax) / Constants.HOUR_SECONDS) * Constants.HOUR_SECONDS + Constants.HOUR_SECONDS;
-        return b;
-    }
-
-    public Bounds calculateMonthBounds() {
-        Bounds b = calculateBounds((p) -> p.time > maxBounds.xMax - 30 * Constants.DAY_SECONDS);
+    public Bounds calculateSpanBounds(int spanSeconds) {
+        int end = spanSeconds <= Constants.DAY_SECONDS ? Math.max(lastLowTime, lastHighTime) : maxBounds.xMax;
+        int start = end - spanSeconds;
+        Bounds b = calculateBounds((p) -> p.time > start && p.time <= end);
         b.xMin= ((b.xMin) / Constants.HOUR_SECONDS) * Constants.HOUR_SECONDS;
         b.xMax = ((b.xMax) / Constants.HOUR_SECONDS) * Constants.HOUR_SECONDS + Constants.HOUR_SECONDS;
         return b;
