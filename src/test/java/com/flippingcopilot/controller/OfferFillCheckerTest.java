@@ -124,7 +124,7 @@ public class OfferFillCheckerTest {
         writeSellOffer(123L, 4, 100L);
         responses.put(FANG, latest(101L, 60_000L, 1L, 60_000L));
         checker.poll();
-        assertEquals("[Copilot] 2 × Osmumten's fang likely sold @ 100", notifications.get(0));
+        assertEquals("Flipping Copilot: 2 × Osmumten's fang likely sold @ 100", notifications.get(0));
 
         checker.poll();
         checker.poll();

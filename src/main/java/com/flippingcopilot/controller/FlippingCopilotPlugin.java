@@ -26,7 +26,6 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
-import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.plugins.PluginDependency;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -239,7 +238,7 @@ public class FlippingCopilotPlugin extends Plugin {
 			executorService.execute(() -> notifier.notify(msg));
 		}
 		if (config.enableChatNotifications() && client.getGameState() == GameState.LOGGED_IN) {
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", new ChatMessageBuilder().append(config.chatTextColor(), msg).build(), "");
+			suggestionController.showChatNotification(msg);
 		}
 	}
 

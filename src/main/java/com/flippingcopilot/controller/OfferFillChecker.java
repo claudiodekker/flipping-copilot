@@ -155,7 +155,7 @@ public class OfferFillChecker {
     }
 
     private static String buildMessage(SavedOffer offer, String itemName) {
-        return String.format("[Copilot] %d × %s likely %s @ %s",
+        return String.format("Flipping Copilot: %d × %s likely %s @ %s",
                 offer.getTotalQuantity() - offer.getQuantitySold(),
                 itemName,
                 offer.getOfferStatus() == OfferStatus.SELL ? "sold" : "bought",
