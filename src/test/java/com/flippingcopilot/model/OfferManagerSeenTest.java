@@ -37,65 +37,40 @@ public class OfferManagerSeenTest {
     }
 
     @Test
-    public void stampSeenAllWritesAllEightSlots() {
-        manager.stampSeenAll(123L, 2000L);
-        OfferManager.SeenData seen = manager.loadSeen(123L);
-        for (int slot = 0; slot < 8; slot++) {
-            assertEquals(Long.valueOf(2000L), seen.slots.get(slot));
-        }
-    }
+    public void theLatestStampWinsAcrossMemoryAndDisk() throws Exception {
 
-    @Test
-    public void stampIsMonotonicPerSlot() {
-        manager.stampSeen(123L, 4, 2000L, null);
-        manager.stampSeen(123L, 4, 1000L, null);
-        assertEquals(Long.valueOf(2000L), manager.loadSeen(123L).slots.get(4));
-    }
+        manager.stampSeen(123L, 2000L, null);
+        manager.stampSeen(123L, 1000L, null);
+        assertEquals(2000L, manager.loadSeen(123L).lastSeen);
 
-    @Test
-    public void loadSeenMaxJoinsDiskAndMemory() throws Exception {
+        writeFile("acc_123_seen.json", "{\"lastSeen\":5000}");
+        assertEquals(5000L, manager.loadSeen(123L).lastSeen);
 
-        manager.stampSeen(123L, 2, 1000L, null);
-        writeFile("acc_123_seen.json", "{\"slots\":{\"2\":5000}}");
-        assertEquals(Long.valueOf(5000L), manager.loadSeen(123L).slots.get(2));
-
-        manager.stampSeen(123L, 3, 9000L, null);
-        writeFile("acc_123_seen.json", "{\"slots\":{\"3\":100}}");
-        assertEquals(Long.valueOf(9000L), manager.loadSeen(123L).slots.get(3));
-    }
-
-    @Test
-    public void stampCacheIsSeededFromDiskSoFlushDoesNotDeleteForeignEntries() throws Exception {
-
-        writeFile("acc_123_seen.json", "{\"slots\":{\"7\":4000}}");
-        manager.stampSeen(123L, 0, 1000L, null);
-        manager.flushSeen();
-        OfferManager fresh = new OfferManager(new Gson(), new DoesNothingExecutorService());
-        assertEquals(Long.valueOf(4000L), fresh.loadSeen(123L).slots.get(7));
-        assertEquals(Long.valueOf(1000L), fresh.loadSeen(123L).slots.get(0));
+        manager.stampSeen(123L, 9000L, null);
+        writeFile("acc_123_seen.json", "{\"lastSeen\":100}");
+        assertEquals(9000L, manager.loadSeen(123L).lastSeen);
     }
 
     @Test
     public void aStampWithoutANameKeepsTheRecordedOne() {
-        manager.stampSeen(123L, 0, 1000L, "Zezima");
-        manager.stampSeen(123L, 1, 2000L, null);
-        manager.stampSeen(123L, 2, 3000L, "");
-        manager.stampSeenAll(123L, 4000L);
+        manager.stampSeen(123L, 1000L, "Zezima");
+        manager.stampSeen(123L, 2000L, null);
+        manager.stampSeen(123L, 3000L, "");
         assertEquals("a nameless stamp must not erase the name", "Zezima", manager.loadSeen(123L).name);
     }
 
     @Test
-    public void loadSeenReturnsEmptyMapForUnknownAccountAndUnparseableFile() throws Exception {
-        assertTrue(manager.loadSeen(999L).slots.isEmpty());
+    public void unknownAccountAndUnparseableFileReadAsNeverSeen() throws Exception {
+        assertEquals(0L, manager.loadSeen(999L).lastSeen);
         writeFile("acc_777_seen.json", "{not json");
-        assertTrue(manager.loadSeen(777L).slots.isEmpty());
+        assertEquals(0L, manager.loadSeen(777L).lastSeen);
     }
 
 
     @Test
     public void returnsRestingOffersJoinedWithSidecar() throws Exception {
         writeOffer(123L, 4, "SELLING");
-        manager.stampSeen(123L, 4, 1000L, null);
+        manager.stampSeen(123L, 1000L, null);
         OfferManager.EnumerationResult r = manager.listRestingOffers();
         assertEquals(1, r.resting.size());
         OfferManager.RestingOffer ro = r.resting.get(0);
@@ -104,6 +79,24 @@ public class OfferManagerSeenTest {
         assertEquals(1000L, ro.lastSeen);
         assertEquals(26219, ro.offer.getItemId());
         assertTrue(r.resolvedSlotKeys.contains("123:4"));
+    }
+
+    @Test
+    public void aClientsOwnSnapshotNeverClobbersAnotherClientsStamps() {
+        OfferManager clientB = new OfferManager(new Gson(), new DoesNothingExecutorService());
+        manager.stampSeen(123L, 2000L, "Zezima");
+        manager.flushSeen();
+
+        // the account moves to a second client, which stamps it forward
+        clientB.stampSeen(123L, 6000L, "Zezima");
+        clientB.flushSeen();
+
+        // a later write from the first client must not replay its own stale view of the account
+        manager.stampSeen(123L, 3000L, "Zezima");
+        manager.flushSeen();
+
+        OfferManager fresh = new OfferManager(new Gson(), new DoesNothingExecutorService());
+        assertEquals(6000L, fresh.loadSeen(123L).lastSeen);
     }
 
     @Test
@@ -125,7 +118,7 @@ public class OfferManagerSeenTest {
     @Test
     public void ignoresNonOfferFilesNegativeOkAndHashMinusOneExcluded() throws Exception {
         writeOffer(-5L, 0, "BUYING");
-        manager.stampSeen(-5L, 0, 1000L, null);
+        manager.stampSeen(-5L, 1000L, null);
         writeOffer(-1L, 1, "BUYING");
         writeFile("acc_123_seen.json", "{}");
         writeFile("deadbeef_session_data.jsonl", "");
@@ -138,7 +131,7 @@ public class OfferManagerSeenTest {
     public void unparseableOfferFileIsSkippedAndUnresolved() throws Exception {
         writeFile("acc_123_2.json", "{torn");
         writeOffer(123L, 5, "SELLING");
-        manager.stampSeen(123L, 5, 1000L, null);
+        manager.stampSeen(123L, 1000L, null);
         OfferManager.EnumerationResult r = manager.listRestingOffers();
         assertEquals(1, r.resting.size());
         assertFalse(r.resolvedSlotKeys.contains("123:2"));

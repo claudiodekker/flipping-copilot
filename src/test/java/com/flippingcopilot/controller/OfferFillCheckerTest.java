@@ -58,7 +58,7 @@ public class OfferFillCheckerTest {
         try (FileWriter w = new FileWriter(new File(tmp.getRoot(), "acc_" + hash + "_" + slot + ".json"))) {
             w.write("{\"itemId\":" + itemId + ",\"quantitySold\":0,\"totalQuantity\":2,\"price\":" + price + ",\"spent\":0,\"state\":\"SELLING\",\"copilotPriceUsed\":true,\"wasCopilotSuggestion\":true}");
         }
-        offerManager.stampSeen(hash, slot, 50_000L, "Zezima");
+        offerManager.stampSeen(hash, 50_000L, "Zezima");
     }
 
     // holds each consumer instead of calling it, so a test controls when responses land
@@ -71,8 +71,8 @@ public class OfferFillCheckerTest {
                 id -> "Osmumten's fang", notifications::add);
     }
 
-    private Long seen(long hash, int slot) {
-        return offerManager.loadSeen(hash).slots.get(slot);
+    private long seen(long hash) {
+        return offerManager.loadSeen(hash).lastSeen;
     }
 
     private static SavedOffer savedOffer(GrandExchangeOfferState state, long price) {
@@ -169,7 +169,7 @@ public class OfferFillCheckerTest {
         assertEquals(1, notifications.size());
 
         writeSellOffer(123L, 4, 95L);
-        offerManager.stampSeen(123L, 4, 55_000L, "Zezima");
+        offerManager.stampSeen(123L, 55_000L, "Zezima");
         responses.put(FANG, latest(96L, 61_000L, 1L, 61_000L));
         checker.poll();
         assertEquals("a repriced offer is a new offer", 2, notifications.size());
@@ -198,7 +198,7 @@ public class OfferFillCheckerTest {
         checker.poll();
         assertEquals(1, notifications.size());
 
-        // unsupported world, so logging back out will not stampSeenAll: lastSeen and the fingerprint
+        // unsupported world, so logging back out will not stamp on logout: lastSeen and the fingerprint
         // stay put, and any second alert is a genuine duplicate rather than a legitimate re-arm
         checker.onOsrsLoggedIn(123L, false);
         try (FileWriter w = new FileWriter(new File(tmp.getRoot(), "acc_123_4.json"))) {
@@ -326,12 +326,24 @@ public class OfferFillCheckerTest {
     }
 
     @Test
-    public void loginThenLogoutStampsAllSlots() {
+    public void anAccountStampedRecentlyIsLiveElsewhereSoItIsNotGuessedAbout() throws Exception {
+        writeSellOffer(123L, 4, 100L);
+        offerManager.stampSeen(123L, now - 60L, "Zezima");
+        responses.put(FANG, latest(101L, now - 30L, 1L, now - 30L));
+        checker.poll();
+        assertEquals("a heartbeat that fresh means another client has the account online", 0, fetches);
+        assertTrue(notifications.isEmpty());
+    }
+
+    @Test
+    public void aLiveAccountIsStampedByEveryPollAndAgainOnLogout() {
         checker.onOsrsLoggedIn(123L, true);
         now = 105_000L;
+        checker.poll();
+        assertEquals("other clients read this stamp to tell the account is still online", 105_000L, seen(123L));
+        now = 110_000L;
         checker.onOsrsLoginScreen();
-        assertEquals(Long.valueOf(105_000L), seen(123L, 0));
-        assertEquals(Long.valueOf(105_000L), seen(123L, 7));
+        assertEquals(110_000L, seen(123L));
     }
 
     @Test
@@ -339,16 +351,18 @@ public class OfferFillCheckerTest {
         checker.onOsrsLoggedIn(123L, true);
         checker.onOsrsLoginScreen();
         now = 200_000L;
+        checker.poll();
         checker.onOsrsLoginScreen();
-        assertTrue(seen(123L, 0) < 200_000L);
+        assertTrue("a logged out account is stamped by neither poll nor login screen", seen(123L) < 200_000L);
     }
 
     @Test
     public void unsupportedWorldSessionNeverStamps() {
         checker.onOsrsLoggedIn(123L, false);
         now = 105_000L;
+        checker.poll();
         checker.onOsrsLoginScreen();
-        assertNull(seen(123L, 0));
+        assertEquals(0L, seen(123L));
     }
 
     @Test
@@ -356,10 +370,10 @@ public class OfferFillCheckerTest {
         checker.onOsrsLoggedIn(123L, true);
         now = 105_000L;
         checker.onOsrsLoggedIn(123L, false);
-        assertEquals(Long.valueOf(105_000L), seen(123L, 0));
+        assertEquals(105_000L, seen(123L));
         now = 110_000L;
         checker.onOsrsLoginScreen();
-        assertEquals(Long.valueOf(105_000L), seen(123L, 0));
+        assertEquals(105_000L, seen(123L));
     }
 
     @Test
@@ -368,7 +382,7 @@ public class OfferFillCheckerTest {
         checker.onOsrsLoginScreen();
         now = 200_000L;
         checker.onOsrsLoggedIn(456L, false);
-        assertTrue("stale capture must not stamp across the away window", seen(123L, 0) < 200_000L);
+        assertTrue("stale capture must not stamp across the away window", seen(123L) < 200_000L);
     }
 
     @Test
@@ -377,7 +391,7 @@ public class OfferFillCheckerTest {
         now = 105_000L;
         checker.onSessionEndShutdown();
         OfferManager fresh = new OfferManager(new Gson(), new DoesNothingExecutorService());
-        assertEquals(Long.valueOf(105_000L), fresh.loadSeen(123L).slots.get(0));
+        assertEquals(105_000L, fresh.loadSeen(123L).lastSeen);
     }
 
     @Test
@@ -388,6 +402,6 @@ public class OfferFillCheckerTest {
         now = 110_000L;
         checker.onSessionEndShutdown();
         OfferManager fresh = new OfferManager(new Gson(), new DoesNothingExecutorService());
-        assertEquals(Long.valueOf(105_000L), fresh.loadSeen(123L).slots.get(0));
+        assertEquals(105_000L, fresh.loadSeen(123L).lastSeen);
     }
 }

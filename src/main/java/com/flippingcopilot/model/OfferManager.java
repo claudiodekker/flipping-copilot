@@ -105,31 +105,20 @@ public class OfferManager {
 
     public static class SeenData {
         public String name;
-        public Map<Integer, Long> slots = new HashMap<>();
+        public long lastSeen;
     }
 
     private final Object seenLock = new Object();
     private final Map<Long, SeenData> seenCache = new HashMap<>();
     private final Set<Long> seenDirty = new HashSet<>();
 
-    public void stampSeen(long accountHash, int slot, long epochSeconds, String name) {
-        stampSlots(accountHash, epochSeconds, name, slot);
-    }
-
-    public void stampSeenAll(long accountHash, long epochSeconds) {
-        stampSlots(accountHash, epochSeconds, null, 0, 1, 2, 3, 4, 5, 6, 7);
-    }
-
-    private void stampSlots(long accountHash, long epochSeconds, String name, int... slots) {
+    public void stampSeen(long accountHash, long epochSeconds, String name) {
         synchronized (seenLock) {
-            SeenData d = seededSeen(accountHash);
+            SeenData d = seenCache.computeIfAbsent(accountHash, k -> new SeenData());
             if (name != null && !name.isEmpty()) {
                 d.name = name;
             }
-            for (int slot : slots) {
-                d.slots.merge(slot, epochSeconds, Math::max);
-            }
-
+            d.lastSeen = Math.max(d.lastSeen, epochSeconds);
             seenDirty.add(accountHash);
         }
 
@@ -150,7 +139,7 @@ public class OfferManager {
         synchronized (seenLock) {
             SeenData mem = seenCache.get(accountHash);
             if (mem != null) {
-                mem.slots.forEach((slot, t) -> result.slots.merge(slot, t, Math::max));
+                result.lastSeen = Math.max(result.lastSeen, mem.lastSeen);
                 if (result.name == null || result.name.isEmpty()) {
                     result.name = mem.name;
                 }
@@ -160,10 +149,6 @@ public class OfferManager {
         return result;
     }
 
-    private SeenData seededSeen(long accountHash) {
-        return seenCache.computeIfAbsent(accountHash, this::readSeenFromDisk);
-    }
-
     private void writeSeen(long accountHash) {
         synchronized (seenLock) {
             writeSeenLocked(accountHash);
@@ -171,8 +156,13 @@ public class OfferManager {
     }
 
     private void writeSeenLocked(long accountHash) {
-        SeenData d = seenCache.get(accountHash);
-        if (d != null && Persistance.writeAtomically(seenFile(accountHash), gson.toJson(d))) {
+        if (!seenCache.containsKey(accountHash)) {
+            return;
+        }
+
+        SeenData d = loadSeen(accountHash);
+        seenCache.put(accountHash, d);
+        if (Persistance.writeAtomically(seenFile(accountHash), gson.toJson(d))) {
             seenDirty.remove(accountHash);
         }
     }
@@ -239,14 +229,12 @@ public class OfferManager {
                 continue;
             }
 
-            // a torn sidecar reads as an empty map, so every slot falls out on the null check below
             SeenData seen = seenByAccount.computeIfAbsent(accountHash, this::loadSeen);
-            Long lastSeen = seen.slots.get(slot);
-            if (lastSeen == null || lastSeen == 0) {
+            if (seen.lastSeen == 0) {
                 continue;
             }
 
-            result.resting.add(new RestingOffer(accountHash, slot, offer, lastSeen, seen.name));
+            result.resting.add(new RestingOffer(accountHash, slot, offer, seen.lastSeen, seen.name));
             result.resolvedSlotKeys.add(RestingOffer.slotKey(accountHash, slot));
         }
 
@@ -255,13 +243,7 @@ public class OfferManager {
 
     private SeenData readSeenFromDisk(long accountHash) {
         SeenData d = readJsonFile(seenFile(accountHash), SeenData.class);
-        if (d == null) {
-            d = new SeenData();
-        }
-        if (d.slots == null) {
-            d.slots = new HashMap<>();
-        }
-        return d;
+        return d == null ? new SeenData() : d;
     }
 
     private static File seenFile(long accountHash) {

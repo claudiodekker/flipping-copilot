@@ -83,7 +83,7 @@ public class OfferFillChecker {
     }
 
     private void stampCapturedSeen() {
-        offerManager.stampSeenAll(capturedHash, clock.getAsLong());
+        offerManager.stampSeen(capturedHash, clock.getAsLong(), null);
     }
 
     private long currentAccountHash() {
@@ -94,6 +94,10 @@ public class OfferFillChecker {
         try {
             if (!enabled.getAsBoolean()) {
                 return;
+            }
+
+            if (sessionActive && capturedWorldSupported) {
+                stampCapturedSeen();
             }
 
             OfferManager.EnumerationResult enumeration = offerManager.listRestingOffers();
@@ -108,12 +112,13 @@ public class OfferFillChecker {
             return;
         }
         long current = currentAccountHash();
+        long liveCutoff = clock.getAsLong() - 300;
         Map<Integer, List<OfferManager.RestingOffer>> byItem = new HashMap<>();
         Set<String> stillResting = new HashSet<>();
 
         for (OfferManager.RestingOffer ro : enumeration.resting) {
             stillResting.add(ro.fingerprint());
-            if (ro.accountHash != current && !notified.containsKey(ro.fingerprint())) {
+            if (ro.accountHash != current && ro.lastSeen <= liveCutoff && !notified.containsKey(ro.fingerprint())) {
                 byItem.computeIfAbsent(ro.offer.getItemId(), k -> new ArrayList<>()).add(ro);
             }
         }
