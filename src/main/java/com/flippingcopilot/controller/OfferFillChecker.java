@@ -92,12 +92,12 @@ public class OfferFillChecker {
 
     public void poll() {
         try {
-            if (!enabled.getAsBoolean()) {
-                return;
-            }
-
             if (sessionActive && capturedWorldSupported) {
                 stampCapturedSeen();
+            }
+
+            if (!enabled.getAsBoolean()) {
+                return;
             }
 
             OfferManager.EnumerationResult enumeration = offerManager.listRestingOffers();
@@ -112,13 +112,13 @@ public class OfferFillChecker {
             return;
         }
         long current = currentAccountHash();
-        long liveCutoff = clock.getAsLong() - 300;
+        long now = clock.getAsLong();
         Map<Integer, List<OfferManager.RestingOffer>> byItem = new HashMap<>();
         Set<String> stillResting = new HashSet<>();
 
         for (OfferManager.RestingOffer ro : enumeration.resting) {
             stillResting.add(ro.fingerprint());
-            if (ro.accountHash != current && ro.lastSeen <= liveCutoff && !notified.containsKey(ro.fingerprint())) {
+            if (ro.accountHash != current && ro.lastSeen <= now - 300 && ro.lastSeen > now - 3 * 24 * 3600 && !notified.containsKey(ro.fingerprint())) {
                 byItem.computeIfAbsent(ro.offer.getItemId(), k -> new ArrayList<>()).add(ro);
             }
         }
@@ -160,8 +160,7 @@ public class OfferFillChecker {
     }
 
     private static String buildMessage(SavedOffer offer, String itemName, String accountName) {
-        return String.format("Flipping Copilot: %d × %s likely %s @ %s%s",
-                offer.getTotalQuantity() - offer.getQuantitySold(),
+        return String.format("Flipping Copilot: %s likely %s @ %s%s",
                 itemName,
                 offer.getOfferStatus() == OfferStatus.SELL ? "sold" : "bought",
                 UIUtilities.quantityToRSDecimalStack(offer.getPrice(), false),

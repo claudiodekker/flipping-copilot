@@ -124,7 +124,8 @@ public class OfferFillCheckerTest {
         writeSellOffer(123L, 4, 100L);
         responses.put(FANG, latest(101L, 60_000L, 1L, 60_000L));
         checker.poll();
-        assertEquals("Flipping Copilot: 2 × Osmumten's fang likely sold @ 100 (Zezima)", notifications.get(0));
+        assertEquals("a print carries no volume, so claiming a quantity would be made up",
+                "Flipping Copilot: Osmumten's fang likely sold @ 100 (Zezima)", notifications.get(0));
 
         checker.poll();
         checker.poll();
@@ -317,12 +318,14 @@ public class OfferFillCheckerTest {
     }
 
     @Test
-    public void disabledGateDoesNothing() throws Exception {
+    public void disabledGateDoesNothingButStillStamps() throws Exception {
         OfferFillChecker off = new OfferFillChecker(offerManager, () -> false, () -> now, Runnable::run,
                 (i, c) -> fail("must not fetch"), id -> "Osmumten's fang", notifications::add);
         writeSellOffer(123L, 4, 100L);
+        off.onOsrsLoggedIn(456L, true);
         off.poll();
         assertTrue(notifications.isEmpty());
+        assertEquals("a client with alerts off still owes other clients its liveness stamp", now, seen(456L));
     }
 
     @Test
@@ -332,6 +335,16 @@ public class OfferFillCheckerTest {
         responses.put(FANG, latest(101L, now - 30L, 1L, now - 30L));
         checker.poll();
         assertEquals("a heartbeat that fresh means another client has the account online", 0, fetches);
+        assertTrue(notifications.isEmpty());
+    }
+
+    @Test
+    public void anAccountAwayLongerThanTheWindowIsNotGuessedAboutEither() throws Exception {
+        writeSellOffer(123L, 4, 100L);
+        now = 400_000L;
+        responses.put(FANG, latest(101L, 300_000L, 1L, 300_000L));
+        checker.poll();
+        assertEquals("after this long every print crosses, so a fill is not what it tells us", 0, fetches);
         assertTrue(notifications.isEmpty());
     }
 
