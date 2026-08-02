@@ -212,7 +212,7 @@ public class SuggestionController {
             log.info("discarding suggestion as not dump alert and no request in progress {}", newSuggestion);
             return;
         }
-        if (newSuggestion.isDumpAlert && config.dumpAlertSound()) {
+        if (newSuggestion.isBuyDumpSuggestion() && config.dumpAlertSound()) {
             playDumpAlertSound();
         }
         suggestionManager.setSuggestion(newSuggestion);
