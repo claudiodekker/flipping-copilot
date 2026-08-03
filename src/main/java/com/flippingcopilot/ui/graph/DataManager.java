@@ -93,9 +93,14 @@ public class DataManager {
         return b;
     }
 
-    public Bounds calculateSpanBounds(int spanSeconds) {
-        int end = spanSeconds <= Constants.DAY_SECONDS ? Math.max(lastLowTime, lastHighTime) : maxBounds.xMax;
-        int start = end - spanSeconds;
+    /**
+     * Bounds for the last spanSeconds of real prices, plus up to horizonSeconds of predictions on top.
+     * A horizon of 0 means the full prediction horizon, i.e. everything we have.
+     */
+    public Bounds calculateSpanBounds(int spanSeconds, int horizonSeconds) {
+        int latest = Math.max(lastLowTime, lastHighTime);
+        int end = horizonSeconds == 0 ? maxBounds.xMax : Math.min(maxBounds.xMax, latest + horizonSeconds);
+        int start = latest - spanSeconds;
         Bounds b = calculateBounds((p) -> p.time > start && p.time <= end);
         b.xMin= ((b.xMin) / Constants.HOUR_SECONDS) * Constants.HOUR_SECONDS;
         b.xMax = ((b.xMax) / Constants.HOUR_SECONDS) * Constants.HOUR_SECONDS + Constants.HOUR_SECONDS;

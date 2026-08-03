@@ -46,7 +46,7 @@ public class GraphPanel extends JPanel {
         zoomHandler.maxViewBounds = dataManager.maxBounds;
         zoomHandler.homeViewBounds = dataManager.calculateHomeBounds();
         for (ZoomHandler.ZoomPreset preset : zoomHandler.presets) {
-            preset.bounds = dataManager.calculateSpanBounds(preset.spanSeconds);
+            preset.bounds = dataManager.calculateSpanBounds(preset.spanSeconds, preset.horizonSeconds);
         }
         if (oldItemID != dataManager.data.itemId) {
             bounds = zoomHandler.homeViewBounds.copy();

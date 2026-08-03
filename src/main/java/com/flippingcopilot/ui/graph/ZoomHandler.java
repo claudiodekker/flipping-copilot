@@ -22,6 +22,7 @@ public class ZoomHandler {
     public static class ZoomPreset {
         public final String label;
         public final int spanSeconds;
+        public final int horizonSeconds;
         public final Rectangle buttonRect = new Rectangle();
         public Bounds bounds;
     }
@@ -40,10 +41,10 @@ public class ZoomHandler {
     private final Rectangle zoomOutButtonRect = new Rectangle();
 
     public final List<ZoomPreset> presets = Arrays.asList(
-            new ZoomPreset("Month", 30 * Constants.DAY_SECONDS),
-            new ZoomPreset("Week", 7 * Constants.DAY_SECONDS),
-            new ZoomPreset("Day", Constants.DAY_SECONDS),
-            new ZoomPreset("8h", 8 * Constants.HOUR_SECONDS));
+            new ZoomPreset("Month", 30 * Constants.DAY_SECONDS, 0),
+            new ZoomPreset("Week", 7 * Constants.DAY_SECONDS, 0),
+            new ZoomPreset("Day", Constants.DAY_SECONDS, 6 * Constants.HOUR_SECONDS),
+            new ZoomPreset("8h", 8 * Constants.HOUR_SECONDS, 2 * Constants.HOUR_SECONDS));
 
     public Bounds maxViewBounds;
     public Bounds homeViewBounds;
