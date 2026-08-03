@@ -8,13 +8,9 @@ import com.flippingcopilot.ui.*;
 import com.flippingcopilot.ui.flipsdialog.FlipsDialogController;
 import com.flippingcopilot.ui.graph.model.Data;
 import com.flippingcopilot.ui.graph.model.PriceLine;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.ChatMessageType;
-import net.runelite.api.Client;
-import net.runelite.api.VarClientInt;
+import net.runelite.api.*;
 import net.runelite.client.Notifier;
 import net.runelite.client.audio.AudioPlayer;
 import net.runelite.client.callback.ClientThread;
@@ -216,7 +212,7 @@ public class SuggestionController {
             log.info("discarding suggestion as not dump alert and no request in progress {}", newSuggestion);
             return;
         }
-        if (newSuggestion.isDumpAlert && config.dumpAlertSound()) {
+        if (newSuggestion.isBuyDumpSuggestion() && config.dumpAlertSound()) {
             playDumpAlertSound();
         }
         suggestionManager.setSuggestion(newSuggestion);
